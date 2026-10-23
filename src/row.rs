@@ -63,6 +63,13 @@ impl Row {
         self.wrapped = false;
     }
 
+    /// Blank its first `n` cells (those after them already are) and stop it
+    /// wrapping.
+    pub fn clear_first(&mut self, n: usize) {
+        self.cells[..n].fill(Cell::new());
+        self.wrapped = false;
+    }
+
     pub fn reset(&mut self) {
         self.cells.fill(Cell::new());
         self.wrapped = false;

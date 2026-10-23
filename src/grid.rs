@@ -450,8 +450,7 @@ impl Grid {
                 row.reset();
             }
             for row in &mut between[reset..removed] {
-                history.rows.push_back(PackedRow::pack(row));
-                row.reset();
+                history.rows.push_back(PackedRow::take(row));
             }
             if history.offset > 0 {
                 history.offset = history.offset.saturating_add(count).min(history.rows.len());

@@ -26,9 +26,21 @@ const WRAPPED: u8 = 0b1;
 pub struct PackedRow(Box<[u8]>);
 
 impl PackedRow {
+    /// `row`'s cells up to the last that is not blank, packed, and the row
+    /// left blank: only those cells need blanking, the rest already are.
+    pub fn take(row: &mut Row) -> Self {
+        let used = row.used();
+        let packed = Self::pack_cells(&row.as_slice()[..used], row.wrapped());
+        row.clear_first(used);
+        packed
+    }
+
     /// `row`'s cells up to the last that is not blank, packed.
     pub fn pack(row: &Row) -> Self {
-        let cells = &row.as_slice()[..row.used()];
+        Self::pack_cells(&row.as_slice()[..row.used()], row.wrapped())
+    }
+
+    fn pack_cells(cells: &[Cell], wrapped: bool) -> Self {
         let mut runs: Vec<(usize, Attrs, u16)> = Vec::new();
         for (i, cell) in cells.iter().enumerate() {
             let key = (*cell.attrs(), cell.link());
@@ -39,7 +51,7 @@ impl PackedRow {
         let text: usize = cells.iter().map(|c| c.contents_bytes().len()).sum();
         let mut out =
             Vec::with_capacity(HEADER_BYTES + cells.len() + runs.len() * RUN_BYTES + text);
-        out.push(if row.wrapped() { WRAPPED } else { 0 });
+        out.push(if wrapped { WRAPPED } else { 0 });
         out.extend_from_slice(&count(cells.len()).to_le_bytes());
         out.extend_from_slice(&count(runs.len()).to_le_bytes());
         out.extend(cells.iter().map(Cell::raw_len));
