@@ -1,0 +1,30 @@
+[package]
+name = "vt1k"
+version = "0.1.0"
+authors = ["mxaddict <mxaddict@kryptic.sh>"]
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+description = "A terminal emulator's screen: escape sequences in, cells, history and modes out"
+repository = "https://github.com/kryptic-sh/vt1k"
+homepage = "https://github.com/kryptic-sh/vt1k"
+readme = "README.md"
+keywords = ["terminal", "vt100", "emulator", "ansi"]
+categories = ["command-line-interface"]
+
+[dependencies]
+unicode-width = "0.2.2"
+vte = { version = "0.15", default-features = false }
+
+[dev-dependencies]
+vt100 = { git = "https://github.com/kryptic-sh/vt100-rust", rev = "51c4c7addeb13ababcfa2a9aef1051964eeeaa22" }
+
+[lints.clippy]
+or_fun_call = "deny"
+unused_peekable = "deny"
+assigning_clones = "warn"
+format_push_string = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+use_self = "warn"
+redundant_pub_crate = "warn"
