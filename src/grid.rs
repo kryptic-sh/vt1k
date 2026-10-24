@@ -557,13 +557,6 @@ impl Grid {
         self.pos.col = self.pos.col.saturating_sub(count);
     }
 
-    /// To the next multiple of eight, or the last column.
-    pub fn col_tab(&mut self) {
-        self.pos.col -= self.pos.col % 8;
-        self.pos.col = self.pos.col.saturating_add(8);
-        self.col_clamp();
-    }
-
     pub fn col_set(&mut self, col: u16) {
         self.pos.col = col;
         self.col_clamp();

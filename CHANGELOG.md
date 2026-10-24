@@ -21,6 +21,11 @@ All notable changes to this project are documented here. The format follows
   or 6, 8, 9 and 53 set them and 25, 28, 29 and 55 reset them, as tmux's
   input_csi_dispatch_sgr (`Cell::blink`, `hidden`, `strikethrough`, `overline`).
   A cell takes two bytes more for them.
+- **Tab stops kept as tmux keeps them**, where vt100's were fixed every 8
+  columns: HTS (`ESC H`) sets one, TBC (`CSI g`, 0 or 3) clears one or all, CBT
+  (`CSI Z`) goes back, and HT past the last column leaves the cursor there, as
+  tmux's. A new width or a full reset brings back the defaults.
+  `Screen::tab_stops` lists them.
 - **Insert mode and autowrap kept**, which vt100 ignored: in insert mode
   (`CSI 4 h`, `Screen::insert_mode`) text pushes the rest of its row right;
   without autowrap (`CSI ? 7 l`, `Screen::autowrap`) text stops at the last

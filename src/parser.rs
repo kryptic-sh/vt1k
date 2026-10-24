@@ -513,7 +513,7 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
         match b {
             7 => self.callbacks.audible_bell(&mut self.screen),
             8 => self.screen.grid_mut().col_dec(1),
-            9 => self.screen.grid_mut().col_tab(),
+            9 => self.screen.tab(),
             10..=12 => self.lf(),
             13 => self.screen.grid_mut().col_set(0),
             // Shift in and out: character sets are not kept, but they are
@@ -540,6 +540,7 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
             b'>' => self.screen.clear_mode(MODE_APPLICATION_KEYPAD),
             b'M' => self.screen.grid_mut().row_dec_scroll(1),
             b'c' => self.ris(),
+            b'H' => self.screen.set_tab(true),
             b'g' => self.callbacks.visual_bell(&mut self.screen),
             _ => self
                 .callbacks
@@ -572,6 +573,13 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
                 grid.row_dec_clamp(one(1));
             }
             (None, 'G' | '`') => self.screen.grid_mut().col_set(one(1) - 1),
+            (None, 'Z') => self.screen.back_tab(one(1)),
+            // TBC: tmux clears the stop at the cursor (0) or all (3).
+            (None, 'g') => match first(params, 0).unwrap_or(0) {
+                0 => self.screen.set_tab(false),
+                3 => self.screen.clear_tabs(),
+                _ => unhandled(self),
+            },
             (None, 'H' | 'f') => {
                 let row = first(params, 0).filter(|&n| n != 0).unwrap_or(1);
                 let col = first(params, 1).filter(|&n| n != 0).unwrap_or(1);

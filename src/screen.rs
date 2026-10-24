@@ -109,6 +109,17 @@ pub struct Screen {
     pub(crate) cursor_style: CursorStyle,
     /// The last character written, for REP.
     pub(crate) last_char: Option<char>,
+    /// A flag a column: a tab stop there. One set for both screens, as
+    /// tmux keeps them.
+    tabs: Vec<bool>,
+}
+
+/// The columns between the default tab stops.
+const TAB_WIDTH: u16 = 8;
+
+/// Tab stops every [`TAB_WIDTH`] columns, as tmux's screen_reset_tabs.
+fn default_tabs(cols: u16) -> Vec<bool> {
+    (0..cols).map(|c| c > 0 && c % TAB_WIDTH == 0).collect()
 }
 
 impl Screen {
@@ -129,6 +140,7 @@ impl Screen {
             mouse_protocol_encoding: MouseProtocolEncoding::Default,
             cursor_style: CursorStyle::Default,
             last_char: None,
+            tabs: default_tabs(size.cols.get()),
         }
     }
 
@@ -136,6 +148,57 @@ impl Screen {
     /// reported (use [`Parser::set_size`](crate::Parser::set_size) for that).
     pub fn set_size(&mut self, rows: core::num::NonZeroU16, cols: core::num::NonZeroU16) {
         self.resize(Size { rows, cols }, |_| {}, |_| {});
+    }
+
+    /// The columns with a tab stop, counted from 0.
+    pub fn tab_stops(&self) -> impl Iterator<Item = u16> + '_ {
+        (0..)
+            .zip(&self.tabs)
+            .filter_map(|(col, &stop)| stop.then_some(col))
+    }
+
+    /// HTS (`ESC H`) or TBC (`CSI g`): the tab stop at the cursor's column
+    /// set or cleared.
+    pub(crate) fn set_tab(&mut self, on: bool) {
+        let col = usize::from(self.grid().pos().col);
+        if let Some(stop) = self.tabs.get_mut(col) {
+            *stop = on;
+        }
+    }
+
+    /// TBC 3: every tab stop cleared.
+    pub(crate) fn clear_tabs(&mut self) {
+        self.tabs.fill(false);
+    }
+
+    /// HT as tmux's input_c0_dispatch: the cursor on to the next tab stop,
+    /// or the last column if there is none; from the last column, nowhere.
+    pub(crate) fn tab(&mut self) {
+        let cols = self.grid().size().cols.get();
+        let col = self.grid().pos().col;
+        if col >= cols - 1 {
+            return;
+        }
+        let stop = (col + 1..cols - 1)
+            .find(|&c| self.tabs[usize::from(c)])
+            .unwrap_or(cols - 1);
+        self.grid_mut().col_set(stop);
+    }
+
+    /// CBT as tmux's input_csi_dispatch: the cursor back `count` tab stops.
+    pub(crate) fn back_tab(&mut self, count: u16) {
+        let cols = self.grid().size().cols.get();
+        let mut col = self.grid().pos().col.min(cols - 1);
+        for _ in 0..count {
+            if col == 0 {
+                break;
+            }
+            col -= 1;
+            while col > 0 && !self.tabs[usize::from(col)] {
+                col -= 1;
+            }
+        }
+        self.grid_mut().col_set(col);
     }
 
     /// Rewrap the normal screen and its history to a new width on a
@@ -157,6 +220,10 @@ impl Screen {
         mut on_normal: impl FnMut(crate::capture::RowContents<'_>),
         on_alternate: impl FnMut(crate::capture::RowContents<'_>),
     ) {
+        // A new width takes the default tab stops, as tmux's screen_resize.
+        if size.cols != self.alternate_grid.size().cols {
+            self.tabs = default_tabs(size.cols.get());
+        }
         if !(self.reflow && self.mode(MODE_ALTERNATE_SCREEN)) {
             self.resize_normal(size, &mut on_normal);
         }

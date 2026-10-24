@@ -25,8 +25,9 @@ keeps:
 - the normal screen with its history and the alternate screen, the normal screen
   readable under the alternate one;
 - rows of history packed small, unpacked only where a whole row is read;
-- the cursor, scroll region, origin mode, insert mode, autowrap, keypad and
-  cursor-key modes, bracketed paste, mouse reporting and cursor style;
+- the cursor, scroll region, origin mode, insert mode, autowrap, tab stops,
+  keypad and cursor-key modes, bracketed paste, mouse reporting and cursor
+  style;
 - optionally, the normal screen rewrapped on a width change, as tmux's
   `grid_reflow` ([`Screen::set_reflow`]), with each line's new place reported.
 
@@ -34,9 +35,10 @@ What it does not keep (titles, the bell, the clipboard, sequences it does not
 handle) goes to a [`Callbacks`] implementation.
 
 Its behaviour follows [vt100](https://crates.io/crates/vt100) as tmxr used it,
-except where it keeps what vt100 ignored (insert mode, autowrap, and blink,
-hidden, strikethrough and overline), there as tmux does: `tests/parity.rs` feeds
-random sessions to both and compares everything either shows.
+except where it keeps what vt100 ignored (insert mode, autowrap, tab stops, and
+blink, hidden, strikethrough and overline), there as tmux does:
+`tests/parity.rs` feeds random sessions to both and compares everything either
+shows.
 
 ## License
 

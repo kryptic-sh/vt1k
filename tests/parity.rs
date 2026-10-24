@@ -52,13 +52,16 @@ const TEXT: &[&str] = &[
     "ｗ",
     "─│┌",
 ];
+/// HT only from a row's start: past the last column vt1k's stays put, as
+/// tmux's, where vt100's comes back to the last column.
 const CONTROLS: &[&str] = &[
-    "\r", "\n", "\r\n", "\x08", "\t", "\x07", "\x0b", "\x0c", "\x01", "\x0e", "\x0f", "\x1b7",
+    "\r", "\n", "\r\n", "\x08", "\r\t", "\x07", "\x0b", "\x0c", "\x01", "\x0e", "\x0f", "\x1b7",
     "\x1b8", "\x1b=", "\x1b>", "\x1bM", "\x1bg", "\x1b(B", "\x1bc", "\x1bZ", "\x18",
 ];
+/// Not `g` (TBC), whose tab stops vt1k keeps and vt100 does not.
 const CSI_FINALS: &[char] = &[
     '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'S', 'T', 'X', 'b', 'd',
-    'f', 'r', 't', '`', 'n', 'c', 'q', 'u', 'g', 's',
+    'f', 'r', 't', '`', 'n', 'c', 'q', 'u', 's',
 ];
 /// The DEC private modes compared: not 7 (autowrap), which vt100 ignores.
 const DEC_MODES: &[u16] = &[
