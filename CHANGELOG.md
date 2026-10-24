@@ -25,7 +25,8 @@ All notable changes to this project are documented here. The format follows
   columns: HTS (`ESC H`) sets one, TBC (`CSI g`, 0 or 3) clears one or all, CBT
   (`CSI Z`) goes back, and HT past the last column leaves the cursor there, as
   tmux's. A new width or a full reset brings back the defaults.
-  `Screen::tab_stops` lists them.
+  `Screen::tab_stops` lists them and `Screen::reset_tab_stops` puts the defaults
+  back.
 - **Insert mode and autowrap kept**, which vt100 ignored: in insert mode
   (`CSI 4 h`, `Screen::insert_mode`) text pushes the rest of its row right;
   without autowrap (`CSI ? 7 l`, `Screen::autowrap`) text stops at the last

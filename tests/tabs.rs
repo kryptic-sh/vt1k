@@ -79,4 +79,7 @@ fn a_new_width_or_a_reset_resets_them() {
     assert_eq!(p.screen().tab_stops().collect::<Vec<_>>(), [8, 16]);
     p.process(b"\x1b[3g\x1bc");
     assert_eq!(p.screen().tab_stops().collect::<Vec<_>>(), [8, 16]);
+    p.process(b"\x1b[3g");
+    p.screen_mut().reset_tab_stops();
+    assert_eq!(p.screen().tab_stops().collect::<Vec<_>>(), [8, 16]);
 }

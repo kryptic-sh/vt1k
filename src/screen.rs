@@ -157,6 +157,12 @@ impl Screen {
             .filter_map(|(col, &stop)| stop.then_some(col))
     }
 
+    /// The default tab stops back, as tmux's screen_reset_tabs, for a host
+    /// resetting the screen its own way.
+    pub fn reset_tab_stops(&mut self) {
+        self.tabs = default_tabs(self.grid().size().cols.get());
+    }
+
     /// HTS (`ESC H`) or TBC (`CSI g`): the tab stop at the cursor's column
     /// set or cleared.
     pub(crate) fn set_tab(&mut self, on: bool) {
@@ -221,13 +227,14 @@ impl Screen {
         on_alternate: impl FnMut(crate::capture::RowContents<'_>),
     ) {
         // A new width takes the default tab stops, as tmux's screen_resize.
-        if size.cols != self.alternate_grid.size().cols {
-            self.tabs = default_tabs(size.cols.get());
-        }
+        let new_width = size.cols != self.alternate_grid.size().cols;
         if !(self.reflow && self.mode(MODE_ALTERNATE_SCREEN)) {
             self.resize_normal(size, &mut on_normal);
         }
         self.alternate_grid.set_size(size, on_alternate);
+        if new_width {
+            self.reset_tab_stops();
+        }
     }
 
     fn resize_normal(&mut self, size: Size, on_row: impl FnMut(crate::capture::RowContents<'_>)) {
