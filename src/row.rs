@@ -10,6 +10,10 @@ use crate::attrs::Attrs;
 #[derive(Clone, Debug, Default)]
 pub struct Row {
     cells: Vec<Cell>,
+    /// Every cell from here on is blank (`Cell::new`), so [`Row::used`]
+    /// looks no further: a row of history is packed as it scrolls, and
+    /// most rows end long before the screen's edge.
+    end: usize,
     wrapped: bool,
 }
 
@@ -17,13 +21,18 @@ impl Row {
     pub fn new(cols: u16) -> Self {
         Self {
             cells: alloc::vec![Cell::new(); usize::from(cols)],
+            end: 0,
             wrapped: false,
         }
     }
 
     /// A row holding `cells`, which goes on into the next if `wrapped`.
     pub const fn from_cells(cells: Vec<Cell>, wrapped: bool) -> Self {
-        Self { cells, wrapped }
+        Self {
+            end: cells.len(),
+            cells,
+            wrapped,
+        }
     }
 
     pub fn into_cells(self) -> Vec<Cell> {
@@ -33,7 +42,11 @@ impl Row {
     /// How many of its cells were written: up to the last that is not
     /// blank, as tmux counts a line's used cells.
     pub fn used(&self) -> usize {
-        self.cells
+        debug_assert!(
+            self.cells[self.end..].iter().all(Cell::is_default),
+            "a cell past the row's end is written"
+        );
+        self.cells[..self.end]
             .iter()
             .rposition(|c| !c.is_default())
             .map_or(0, |i| i + 1)
@@ -53,13 +66,16 @@ impl Row {
     }
 
     pub fn get_mut(&mut self, col: u16) -> Option<&mut Cell> {
-        self.cells.get_mut(usize::from(col))
+        let cell = self.cells.get_mut(usize::from(col))?;
+        self.end = self.end.max(usize::from(col) + 1);
+        Some(cell)
     }
 
     pub fn clear(&mut self, attrs: Attrs) {
         for cell in &mut self.cells {
             cell.clear(attrs);
         }
+        self.end = self.cells.len();
         self.wrapped = false;
     }
 
@@ -67,11 +83,15 @@ impl Row {
     /// wrapping.
     pub fn clear_first(&mut self, n: usize) {
         self.cells[..n].fill(Cell::new());
+        if n >= self.end {
+            self.end = 0;
+        }
         self.wrapped = false;
     }
 
     pub fn reset(&mut self) {
         self.cells.fill(Cell::new());
+        self.end = 0;
         self.wrapped = false;
     }
 
@@ -98,6 +118,7 @@ impl Row {
         let tail = &mut self.cells[usize::from(i)..];
         tail.rotate_right(count);
         tail[..count].fill(Cell::new());
+        self.end = (self.end + count).min(self.cells.len());
         if continuation && let Some(cell) = self.get_mut(i) {
             cell.set_wide_continuation(true);
         }
@@ -127,6 +148,7 @@ impl Row {
         let wide = self.cells[usize::from(i)].is_wide();
         self.clear_wide(i);
         self.cells[usize::from(i)].clear(attrs);
+        self.end = self.end.max(usize::from(i) + 1);
         // A wide character's first half ends the row a column early.
         if i == self.cols().saturating_sub(if wide { 2 } else { 1 }) {
             self.wrapped = false;
@@ -135,6 +157,7 @@ impl Row {
 
     pub fn truncate(&mut self, len: u16) {
         self.cells.truncate(usize::from(len));
+        self.end = self.end.min(self.cells.len());
         self.set_truncated();
     }
 
@@ -151,6 +174,9 @@ impl Row {
     /// Widen to `len` cells with copies of `cell`, if narrower.
     pub fn grow(&mut self, len: u16, cell: Cell) {
         if self.cells.len() < usize::from(len) {
+            if !cell.is_default() {
+                self.end = usize::from(len);
+            }
             self.cells.resize(usize::from(len), cell);
             self.wrapped = false;
         }
