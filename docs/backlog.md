@@ -19,6 +19,12 @@ What is not done yet, and why.
   history it shows, which clears their wrap flags, so merely viewing the history
   changed a later reflow. vt1k's view is a separate unpacked copy. The parity
   test scrolls copies of both screens for that reason.
+- **Where vt1k keeps more than vt100, the parity test looks away**: autowrap
+  (`CSI ? 7`) is left out of its modes; SGR codes only vt1k keeps are not fed
+  directly, and a session ends where vt100 is handed one all the same (a partial
+  colour leaves one over: 555 of 3000 release-build sessions on 2026-10-24), as
+  from there the two differ on purpose. Insert mode is never fed. These are
+  checked against tmux instead, in tmxr's oracle.
 - **Not checked**: the formatted and diff writers vt100 has
   (`contents_formatted`, `state_diff`, …) are left out, as neither tmxr nor hjkl
   uses them.
