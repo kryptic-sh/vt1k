@@ -52,7 +52,7 @@ fn insert_mode_pushes_the_row_right() {
     assert_eq!(row(&p, 0), "XYZQbcde");
 }
 
-/// Other SM / RM parameters go to the callbacks, insert mode does not.
+/// Other SM / RM parameters go to the callbacks, insert mode and 34 do not.
 #[test]
 fn other_modes_go_to_the_callbacks() {
     #[derive(Default)]
@@ -76,7 +76,13 @@ fn other_modes_go_to_the_callbacks() {
         0,
         Seen::default(),
     );
-    p.process(b"\x1b[4;20h\x1b[34l");
+    p.process(b"\x1b[4;20h\x1b[34l\x1b[35l");
     assert!(p.screen().insert_mode());
-    assert_eq!(p.callbacks().0, [vec![4, 20], vec![34]]);
+    assert!(
+        p.screen().cursor_very_visible(),
+        "34 reset makes it very visible"
+    );
+    assert_eq!(p.callbacks().0, [vec![4, 20], vec![35]]);
+    p.process(b"\x1b[34h");
+    assert!(!p.screen().cursor_very_visible());
 }

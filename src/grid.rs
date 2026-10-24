@@ -196,6 +196,33 @@ impl Grid {
         self.col_clamp();
     }
 
+    /// The cursor at `pos` as it is, origin mode aside, kept on the grid.
+    pub fn put_pos(&mut self, pos: Pos) {
+        self.pos = pos;
+        self.row_clamp_bottom(false);
+        self.col_clamp();
+    }
+
+    pub const fn origin_mode(&self) -> bool {
+        self.origin_mode
+    }
+
+    pub const fn scroll_region(&self) -> (u16, u16) {
+        (self.scroll_top, self.scroll_bottom)
+    }
+
+    /// `other`'s scroll region and origin mode, as tmux keeps one of each
+    /// for both screens; the cursor stays.
+    pub const fn take_region_from(&mut self, other: &Self) {
+        let last = self.size.rows() - 1;
+        if other.scroll_bottom <= last {
+            (self.scroll_top, self.scroll_bottom) = (other.scroll_top, other.scroll_bottom);
+        } else {
+            (self.scroll_top, self.scroll_bottom) = (0, last);
+        }
+        self.origin_mode = other.origin_mode;
+    }
+
     pub const fn save_cursor(&mut self) {
         self.saved_pos = self.pos;
         self.saved_origin_mode = self.origin_mode;
@@ -400,24 +427,43 @@ impl Grid {
         }
     }
 
+    /// The last row IL and DL move rows down to: the region's bottom, or,
+    /// with the cursor outside the region (origin mode off), the screen's,
+    /// as tmux's screen_write_insertline / _deleteline. `None` where they do
+    /// nothing.
+    fn lines_bottom(&self) -> Option<u16> {
+        if self.in_scroll_region() {
+            Some(self.scroll_bottom)
+        } else if self.origin_mode {
+            None
+        } else {
+            Some(self.size.rows() - 1)
+        }
+    }
+
     pub fn insert_lines(&mut self, count: u16) {
-        if count == 0 || !(self.scroll_top..=self.scroll_bottom).contains(&self.pos.row) {
+        let Some(bottom) = self.lines_bottom().filter(|_| count > 0) else {
+            return;
+        };
+        // Outside the region, tmux moves no rows for an IL of as many as are
+        // left or more (grid_view_insert_lines), and so clears none.
+        if !self.in_scroll_region() && count > bottom - self.pos.row {
             return;
         }
-        let between = &mut self.rows[usize::from(self.pos.row)..=usize::from(self.scroll_bottom)];
+        let between = &mut self.rows[usize::from(self.pos.row)..=usize::from(bottom)];
         let n = usize::from(count).min(between.len());
         between.rotate_right(n);
         for row in &mut between[..n] {
             row.reset();
         }
-        self.rows[usize::from(self.scroll_bottom)].wrap(false);
+        self.rows[usize::from(bottom)].wrap(false);
     }
 
     pub fn delete_lines(&mut self, count: u16) {
-        if !(self.scroll_top..=self.scroll_bottom).contains(&self.pos.row) {
+        let Some(bottom) = self.lines_bottom() else {
             return;
-        }
-        let between = &mut self.rows[usize::from(self.pos.row)..=usize::from(self.scroll_bottom)];
+        };
+        let between = &mut self.rows[usize::from(self.pos.row)..=usize::from(bottom)];
         let n = usize::from(count).min(between.len());
         for row in &mut between[..n] {
             row.reset();
@@ -481,19 +527,18 @@ impl Grid {
         self.rows[usize::from(self.scroll_bottom)].wrap(false);
     }
 
+    /// DECSTBM as tmux's screen_write_scrollregion: rows past the screen
+    /// are its last, a region of fewer than two rows is ignored, and
+    /// otherwise the cursor goes home.
     pub fn set_scroll_region(&mut self, top: u16, bottom: u16) {
-        let bottom = bottom.min(self.size.rows() - 1);
-        if top < bottom {
-            self.scroll_top = top;
-            self.scroll_bottom = bottom;
-        } else {
-            self.scroll_top = 0;
-            self.scroll_bottom = self.size.rows() - 1;
+        let last = self.size.rows() - 1;
+        let (top, bottom) = (top.min(last), bottom.min(last));
+        if top >= bottom {
+            return;
         }
-        self.pos = Pos {
-            row: self.scroll_top,
-            col: 0,
-        };
+        self.scroll_top = top;
+        self.scroll_bottom = bottom;
+        self.set_pos(Pos::default());
     }
 
     const fn in_scroll_region(&self) -> bool {

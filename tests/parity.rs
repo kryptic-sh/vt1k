@@ -58,16 +58,19 @@ const CONTROLS: &[&str] = &[
     "\r", "\n", "\r\n", "\x08", "\r\t", "\x07", "\x0b", "\x0c", "\x01", "\x0e", "\x0f", "\x1b7",
     "\x1b8", "\x1b=", "\x1b>", "\x1bM", "\x1bg", "\x1b(B", "\x1bc", "\x1bZ", "\x18",
 ];
-/// Not `g` (TBC), whose tab stops vt1k keeps and vt100 does not, nor `b`
-/// (REP), `s` and `u` (SCP and RCP), which vt1k makes as tmux does.
+/// Not those vt1k makes as tmux does: `g` (TBC, its tab stops), `b`
+/// (REP), `s` and `u` (SCP and RCP), `r` (DECSTBM, its region and what IL
+/// and DL do outside it) and `q` (DECSCUSR, its shape kept over a full
+/// reset).
 const CSI_FINALS: &[char] = &[
     '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'S', 'T', 'X', 'd', 'f',
-    'r', 't', '`', 'n', 'c', 'q',
+    't', '`', 'n', 'c',
 ];
-/// The DEC private modes compared: not 7 (autowrap), which vt100 ignores.
-const DEC_MODES: &[u16] = &[
-    1, 6, 9, 12, 25, 47, 1000, 1002, 1003, 1004, 1005, 1006, 1047, 1049, 2004, 2026,
-];
+/// The DEC private modes compared: not those vt1k keeps as tmux does and
+/// vt100 did not (7, autowrap; 12 and 1004, the cursor's blinking and
+/// focus reports; the alternate screen's 47, 1047 and 1049; the mouse's 9
+/// and 1000 to 1006).
+const DEC_MODES: &[u16] = &[1, 6, 25, 2004, 2026];
 /// The SGR codes vt1k keeps and vt100 hands to the callbacks: blink,
 /// hidden, strikethrough and overline, set and reset.
 const VT1K_ONLY_SGR: &[u16] = &[5, 6, 8, 9, 25, 28, 29, 53, 55];
@@ -479,6 +482,9 @@ fn run(seed: u64) {
                 if old_fed.is_err() || old.callbacks().1 {
                     return;
                 }
+                // vt100's full reset turns reflow off, where vt1k's keeps it
+                // (as tmux's screen keeps rewrapping).
+                old.screen_mut().set_reflow(reflow);
             }
         }
         let reflowed = (

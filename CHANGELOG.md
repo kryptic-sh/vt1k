@@ -21,6 +21,18 @@ All notable changes to this project are documented here. The format follows
   or 6, 8, 9 and 53 set them and 25, 28, 29 and 55 reset them, as tmux's
   input_csi_dispatch_sgr (`Cell::blink`, `hidden`, `strikethrough`, `overline`).
   A cell takes two bytes more for them.
+- **The alternate screen, mouse modes, scroll region and cursor as tmux keeps
+  them**: 47, 1047 and 1049 each switch to a cleared alternate screen with the
+  cursor where it was (1049 saving it for the way back,
+  `Screen::alternate_saved`), and a host can turn the switches off
+  (`Screen::set_alternate_allowed`); mode 9 is not taken, resetting any of 1000
+  to 1003 stops whichever is set, and 1005 and 1006 are kept apart
+  (`Screen::mouse_utf8`); one scroll region serves both screens, DECSTBM ignores
+  a region of fewer than two rows, and IL / DL outside it move the rows from the
+  cursor down; DECSCUSR's shape survives a full reset and an odd one blinks
+  (`Screen::cursor_blinking`, mode 12), focus reports (1004) and a very visible
+  cursor (`CSI 34 l`) are modes. `CursorStyle::decscusr` gives a style's number.
+  A full reset keeps reflow and the host's settings.
 - **REP, SCP and RCP made as tmux makes them**: REP (`CSI b`) repeats only a
   character with nothing after it, and no further than the row's end; SCP and
   RCP (`CSI s`, `CSI u`) save and restore the cursor as `ESC 7` and `ESC 8`.

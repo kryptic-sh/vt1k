@@ -62,6 +62,20 @@ impl CursorStyle {
             _ => return None,
         })
     }
+
+    /// DECSCUSR's parameter for this style: 0 for the terminal's own.
+    #[must_use]
+    pub const fn decscusr(self) -> u8 {
+        match self {
+            Self::Default => 0,
+            Self::BlinkBlock => 1,
+            Self::SteadyBlock => 2,
+            Self::BlinkUnderline => 3,
+            Self::SteadyUnderline => 4,
+            Self::BlinkVerticalBar => 5,
+            Self::SteadyVerticalBar => 6,
+        }
+    }
 }
 
 /// An OSC 8 hyperlink: where it points, and the `id` that joins the
@@ -74,16 +88,28 @@ pub struct Hyperlink {
     pub id: Option<String>,
 }
 
-pub const MODE_APPLICATION_KEYPAD: u8 = 0b0000_0001;
-pub const MODE_APPLICATION_CURSOR: u8 = 0b0000_0010;
-pub const MODE_HIDE_CURSOR: u8 = 0b0000_0100;
-pub const MODE_ALTERNATE_SCREEN: u8 = 0b0000_1000;
-pub const MODE_BRACKETED_PASTE: u8 = 0b0001_0000;
+pub const MODE_APPLICATION_KEYPAD: u16 = 0b0000_0001;
+pub const MODE_APPLICATION_CURSOR: u16 = 0b0000_0010;
+pub const MODE_HIDE_CURSOR: u16 = 0b0000_0100;
+pub const MODE_ALTERNATE_SCREEN: u16 = 0b0000_1000;
+pub const MODE_BRACKETED_PASTE: u16 = 0b0001_0000;
 /// Insert mode (IRM, `CSI 4 h`): text pushes the rest of the row right.
-pub const MODE_INSERT: u8 = 0b0010_0000;
+pub const MODE_INSERT: u16 = 0b0010_0000;
 /// Autowrap turned off (DECAWM, `CSI ? 7 l`): text stops at the last
 /// column instead of going on to the next row.
-pub const MODE_NO_WRAP: u8 = 0b0100_0000;
+pub const MODE_NO_WRAP: u16 = 0b0100_0000;
+/// Focus reports asked for (`CSI ? 1004 h`).
+pub const MODE_FOCUS: u16 = 1 << 7;
+/// The cursor blinks: an odd DECSCUSR, or `CSI ? 12 h`.
+pub const MODE_CURSOR_BLINK: u16 = 1 << 8;
+/// The cursor made very visible (`CSI 34 l`), as tmux's
+/// `MODE_CURSOR_VERY_VISIBLE`.
+pub const MODE_CURSOR_VERY_VISIBLE: u16 = 1 << 9;
+/// The UTF-8 mouse encoding set (1005), kept apart from SGR's as tmux
+/// keeps them.
+pub const MODE_MOUSE_UTF8: u16 = 1 << 10;
+/// The SGR mouse encoding set (1006).
+pub const MODE_MOUSE_SGR: u16 = 1 << 11;
 
 /// The terminal's state: the normal screen with its history, the
 /// alternate screen, the pen, modes and hyperlinks.
@@ -103,15 +129,18 @@ pub struct Screen {
     reflow: bool,
     /// What the last reflow did, until [`Screen::take_reflow`] takes it.
     reflowed: Option<Reflow>,
-    pub(crate) modes: u8,
+    pub(crate) modes: u16,
     pub(crate) mouse_protocol_mode: MouseProtocolMode,
-    pub(crate) mouse_protocol_encoding: MouseProtocolEncoding,
     pub(crate) cursor_style: CursorStyle,
     /// The last character written, for REP.
     pub(crate) last_char: Option<char>,
     /// A flag a column: a tab stop there. One set for both screens, as
     /// tmux keeps them.
     tabs: Vec<bool>,
+    /// [`Screen::alternate_saved`].
+    pub(crate) alternate_saved: Option<(u16, u16)>,
+    /// [`Screen::set_alternate_allowed`].
+    alternate_allowed: bool,
 }
 
 /// The columns between the default tab stops.
@@ -137,10 +166,11 @@ impl Screen {
             reflowed: None,
             modes: 0,
             mouse_protocol_mode: MouseProtocolMode::None,
-            mouse_protocol_encoding: MouseProtocolEncoding::Default,
             cursor_style: CursorStyle::Default,
             last_char: None,
             tabs: default_tabs(size.cols.get()),
+            alternate_saved: None,
+            alternate_allowed: true,
         }
     }
 
@@ -213,6 +243,14 @@ impl Screen {
     /// size until the alternate screen goes. Off by default.
     pub fn set_reflow(&mut self, reflow: bool) {
         self.reflow = reflow;
+    }
+
+    pub(crate) const fn reflow(&self) -> bool {
+        self.reflow
+    }
+
+    pub(crate) const fn alternate_allowed(&self) -> bool {
+        self.alternate_allowed
     }
 
     /// What the last reflow did to the lines, once.
@@ -495,9 +533,69 @@ impl Screen {
         self.mouse_protocol_mode
     }
 
+    /// The encoding mouse reports take: SGR's before UTF-8's when both are
+    /// set, as tmux's input_key_get_mouse picks.
     #[must_use]
     pub const fn mouse_protocol_encoding(&self) -> MouseProtocolEncoding {
-        self.mouse_protocol_encoding
+        if self.mode(MODE_MOUSE_SGR) {
+            MouseProtocolEncoding::Sgr
+        } else if self.mode(MODE_MOUSE_UTF8) {
+            MouseProtocolEncoding::Utf8
+        } else {
+            MouseProtocolEncoding::Default
+        }
+    }
+
+    /// The UTF-8 mouse encoding (1005) is set, beside SGR's or not, as
+    /// tmux's `MODE_MOUSE_UTF8`.
+    #[must_use]
+    pub const fn mouse_utf8(&self) -> bool {
+        self.mode(MODE_MOUSE_UTF8)
+    }
+
+    /// Focus reports were asked for (mode 1004).
+    #[must_use]
+    pub const fn focus_reports(&self) -> bool {
+        self.mode(MODE_FOCUS)
+    }
+
+    /// The cursor blinks, as the program last set it: an odd DECSCUSR, or
+    /// mode 12.
+    #[must_use]
+    pub const fn cursor_blinking(&self) -> bool {
+        self.mode(MODE_CURSOR_BLINK)
+    }
+
+    /// The cursor was made very visible (`CSI 34 l`; `CSI 34 h` ends it).
+    #[must_use]
+    pub const fn cursor_very_visible(&self) -> bool {
+        self.mode(MODE_CURSOR_VERY_VISIBLE)
+    }
+
+    /// Origin mode (DECOM, `CSI ? 6 h`) is on.
+    #[must_use]
+    pub const fn origin_mode(&self) -> bool {
+        self.grid().origin_mode()
+    }
+
+    /// The scroll region's top and bottom rows, counted from 0.
+    #[must_use]
+    pub const fn scroll_region(&self) -> (u16, u16) {
+        self.grid().scroll_region()
+    }
+
+    /// Where the cursor was (row, column) when `CSI ? 1049 h` last switched
+    /// to the alternate screen, as tmux's `saved_cx` / `saved_cy`: kept after
+    /// the switch back, and not set by 47 or 1047.
+    #[must_use]
+    pub const fn alternate_saved(&self) -> Option<(u16, u16)> {
+        self.alternate_saved
+    }
+
+    /// Whether the program may switch to the alternate screen (tmux's
+    /// `alternate-screen` option); when not, its switches are ignored.
+    pub const fn set_alternate_allowed(&mut self, allowed: bool) {
+        self.alternate_allowed = allowed;
     }
 
     #[must_use]
@@ -533,19 +631,55 @@ impl Screen {
         }
     }
 
-    pub(crate) fn enter_alternate_grid(&mut self) {
-        self.grid_mut().set_history_offset(0);
-        self.set_mode(MODE_ALTERNATE_SCREEN);
+    /// To the alternate screen (47, 1047 or 1049 set) as tmux's
+    /// screen_alternate_on: cleared, the cursor where it was, the scroll
+    /// region and origin mode the same (tmux keeps one for the terminal);
+    /// 1049 saves the cursor for its way back. Nothing when already there
+    /// or when switches are not allowed.
+    pub(crate) fn alternate_on(&mut self, mode: u16) {
+        if !self.alternate_allowed || self.mode(MODE_ALTERNATE_SCREEN) {
+            return;
+        }
+        let pos = self.grid.pos();
+        if mode == 1049 {
+            self.alternate_saved = Some((pos.row, pos.col));
+            self.save_cursor();
+        }
+        self.grid.set_history_offset(0);
+        self.alternate_grid.clear();
         self.alternate_grid.allocate_rows();
+        self.alternate_grid.take_region_from(&self.grid);
+        self.alternate_grid.put_pos(pos);
+        self.set_mode(MODE_ALTERNATE_SCREEN);
     }
 
-    pub(crate) fn exit_alternate_grid(&mut self) {
-        self.clear_mode(MODE_ALTERNATE_SCREEN);
-        // Resized while the alternate screen showed: the normal screen takes
-        // the size now, as tmux's `screen_alternate_off`.
-        let size = self.alternate_grid.size();
-        if self.reflow && self.grid.size() != size {
-            self.resize_normal(size, |_| {});
+    /// From the alternate screen (47, 1047 or 1049 reset) as tmux's
+    /// screen_alternate_off: 1049 puts back the cursor it saved (even
+    /// when not on the alternate screen), 47 and 1047 keep it where it is;
+    /// the scroll region and origin mode come along.
+    pub(crate) fn alternate_off(&mut self, mode: u16) {
+        if !self.alternate_allowed {
+            return;
+        }
+        let was = self.mode(MODE_ALTERNATE_SCREEN);
+        if !was && mode != 1049 {
+            return;
+        }
+        let pos = self.alternate_grid.pos();
+        if was {
+            self.clear_mode(MODE_ALTERNATE_SCREEN);
+            // Resized while the alternate screen showed: the normal screen
+            // takes the size now, as tmux's `screen_alternate_off`.
+            let size = self.alternate_grid.size();
+            if self.reflow && self.grid.size() != size {
+                self.resize_normal(size, |_| {});
+            }
+            self.grid.take_region_from(&self.alternate_grid);
+        }
+        if mode == 1049 {
+            self.restore_cursor();
+        } else {
+            self.grid.put_pos(pos);
         }
     }
 
@@ -559,27 +693,15 @@ impl Screen {
         self.attrs = self.saved_attrs;
     }
 
-    pub(crate) const fn set_mode(&mut self, mode: u8) {
+    pub(crate) const fn set_mode(&mut self, mode: u16) {
         self.modes |= mode;
     }
 
-    pub(crate) const fn clear_mode(&mut self, mode: u8) {
+    pub(crate) const fn clear_mode(&mut self, mode: u16) {
         self.modes &= !mode;
     }
 
-    pub(crate) const fn mode(&self, mode: u8) -> bool {
+    pub(crate) const fn mode(&self, mode: u16) -> bool {
         self.modes & mode != 0
-    }
-
-    pub(crate) fn clear_mouse_mode(&mut self, mode: MouseProtocolMode) {
-        if self.mouse_protocol_mode == mode {
-            self.mouse_protocol_mode = MouseProtocolMode::None;
-        }
-    }
-
-    pub(crate) fn clear_mouse_encoding(&mut self, encoding: MouseProtocolEncoding) {
-        if self.mouse_protocol_encoding == encoding {
-            self.mouse_protocol_encoding = MouseProtocolEncoding::Default;
-        }
     }
 }

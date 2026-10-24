@@ -10,7 +10,8 @@ use crate::capture::RowContents;
 use crate::grid::{Pos, Size};
 use crate::screen::{
     MODE_ALTERNATE_SCREEN, MODE_APPLICATION_CURSOR, MODE_APPLICATION_KEYPAD, MODE_BRACKETED_PASTE,
-    MODE_HIDE_CURSOR, MODE_INSERT, MODE_NO_WRAP, MouseProtocolEncoding, MouseProtocolMode,
+    MODE_CURSOR_BLINK, MODE_CURSOR_VERY_VISIBLE, MODE_FOCUS, MODE_HIDE_CURSOR, MODE_INSERT,
+    MODE_MOUSE_SGR, MODE_MOUSE_UTF8, MODE_NO_WRAP, MouseProtocolMode,
 };
 use crate::{Callbacks, Color, UnderlineStyle};
 
@@ -316,10 +317,18 @@ impl<CB: Callbacks> Terminal<CB> {
         self.screen.grid_mut().row_inc_scroll(1, on_row);
     }
 
+    /// A full reset (`ESC c`): a new screen, which keeps the cursor's
+    /// shape (not its blinking) and the cursor 1049 saved, as tmux's, and
+    /// what the host set of it (reflow, whether the alternate screen may be
+    /// used).
     fn ris(&mut self) {
         let size = self.screen.grid.size();
         let history = self.screen.grid.history_capacity();
-        self.screen = Screen::new(size, history);
+        let old = core::mem::replace(&mut self.screen, Screen::new(size, history));
+        self.screen.cursor_style = old.cursor_style;
+        self.screen.alternate_saved = old.alternate_saved;
+        self.screen.set_reflow(old.reflow());
+        self.screen.set_alternate_allowed(old.alternate_allowed());
     }
 
     /// REP as tmux's: the character printed just before, `count` more
@@ -376,31 +385,28 @@ impl<CB: Callbacks> Terminal<CB> {
                 ([1], true) => screen.set_mode(MODE_APPLICATION_CURSOR),
                 ([1], false) => screen.clear_mode(MODE_APPLICATION_CURSOR),
                 ([6], on) => screen.grid_mut().set_origin_mode(on),
-                ([9], true) => screen.mouse_protocol_mode = MouseProtocolMode::Press,
-                ([9], false) => screen.clear_mouse_mode(MouseProtocolMode::Press),
+                // X10 mouse mode, which tmux does not take.
+                ([9], _) => {}
+                ([12], true) => screen.set_mode(MODE_CURSOR_BLINK),
+                ([12], false) => screen.clear_mode(MODE_CURSOR_BLINK),
                 ([25], true) => screen.clear_mode(MODE_HIDE_CURSOR),
                 ([25], false) => screen.set_mode(MODE_HIDE_CURSOR),
-                ([47], true) => screen.enter_alternate_grid(),
-                ([47], false) => screen.exit_alternate_grid(),
+                ([mode @ (47 | 1047 | 1049)], true) => screen.alternate_on(*mode),
+                ([mode @ (47 | 1047 | 1049)], false) => screen.alternate_off(*mode),
+                // The mouse modes as tmux's input_csi_dispatch_sm_private /
+                // _rm_private: setting 1001 is not taken, and resetting any of
+                // 1000 to 1003 stops whichever is set.
                 ([1000], true) => screen.mouse_protocol_mode = MouseProtocolMode::PressRelease,
-                ([1000], false) => screen.clear_mouse_mode(MouseProtocolMode::PressRelease),
+                ([1001], true) => {}
                 ([1002], true) => screen.mouse_protocol_mode = MouseProtocolMode::ButtonMotion,
-                ([1002], false) => screen.clear_mouse_mode(MouseProtocolMode::ButtonMotion),
                 ([1003], true) => screen.mouse_protocol_mode = MouseProtocolMode::AnyMotion,
-                ([1003], false) => screen.clear_mouse_mode(MouseProtocolMode::AnyMotion),
-                ([1005], true) => screen.mouse_protocol_encoding = MouseProtocolEncoding::Utf8,
-                ([1005], false) => screen.clear_mouse_encoding(MouseProtocolEncoding::Utf8),
-                ([1006], true) => screen.mouse_protocol_encoding = MouseProtocolEncoding::Sgr,
-                ([1006], false) => screen.clear_mouse_encoding(MouseProtocolEncoding::Sgr),
-                ([1049], true) => {
-                    screen.save_cursor();
-                    screen.alternate_grid.clear();
-                    screen.enter_alternate_grid();
-                }
-                ([1049], false) => {
-                    screen.exit_alternate_grid();
-                    screen.restore_cursor();
-                }
+                ([1000..=1003], false) => screen.mouse_protocol_mode = MouseProtocolMode::None,
+                ([1004], true) => screen.set_mode(MODE_FOCUS),
+                ([1004], false) => screen.clear_mode(MODE_FOCUS),
+                ([1005], true) => screen.set_mode(MODE_MOUSE_UTF8),
+                ([1005], false) => screen.clear_mode(MODE_MOUSE_UTF8),
+                ([1006], true) => screen.set_mode(MODE_MOUSE_SGR),
+                ([1006], false) => screen.clear_mode(MODE_MOUSE_SGR),
                 ([2004], true) => screen.set_mode(MODE_BRACKETED_PASTE),
                 ([2004], false) => screen.clear_mode(MODE_BRACKETED_PASTE),
                 _ => unhandled(self),
@@ -572,6 +578,9 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
         };
         let one = |default: u16| first(params, 0).filter(|&n| n != 0).unwrap_or(default);
         match (i1, c) {
+            // A parameter that is not a plain number ignores these, as tmux's
+            // input_get.
+            (None, 'r' | 'L' | 'M') | (Some(b' '), 'q') if params.iter().any(|p| p.len() > 1) => {}
             (None, '@') => self.screen.grid_mut().insert_cells(one(1)),
             (None, 'A') => self.screen.grid_mut().row_dec_clamp(one(1)),
             (None, 'B') => self.screen.grid_mut().row_inc_clamp(one(1)),
@@ -664,21 +673,34 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
             // of each other parameter.
             (None, 'h' | 'l') => {
                 for param in params {
-                    if param == [4] {
-                        if c == 'h' {
-                            self.screen.set_mode(MODE_INSERT);
-                        } else {
-                            self.screen.clear_mode(MODE_INSERT);
+                    let mode = match param {
+                        [4] => MODE_INSERT,
+                        // 34 reset makes the cursor very visible, as tmux's.
+                        [34] => MODE_CURSOR_VERY_VISIBLE,
+                        _ => {
+                            unhandled(self);
+                            continue;
                         }
+                    };
+                    if (c == 'h') == (mode == MODE_INSERT) {
+                        self.screen.set_mode(mode);
                     } else {
-                        unhandled(self);
+                        self.screen.clear_mode(mode);
                     }
                 }
             }
             (Some(b'?'), 'h') => self.dec_mode(params, true, &mut unhandled),
             (Some(b'?'), 'l') => self.dec_mode(params, false, &mut unhandled),
+            // DECSCUSR: the shape, and an odd one blinks, as tmux's.
             (Some(b' '), 'q') => match crate::screen::CursorStyle::from_decscusr(one(0)) {
-                Some(style) => self.screen.cursor_style = style,
+                Some(style) => {
+                    self.screen.cursor_style = style;
+                    if one(0) % 2 == 1 {
+                        self.screen.set_mode(MODE_CURSOR_BLINK);
+                    } else {
+                        self.screen.clear_mode(MODE_CURSOR_BLINK);
+                    }
+                }
                 None => unhandled(self),
             },
             // Any other `SP` final is told without its intermediates.
