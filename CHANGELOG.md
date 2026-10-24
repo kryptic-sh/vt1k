@@ -17,3 +17,8 @@ All notable changes to this project are documented here. The format follows
 - **History rows packed small**: a row that scrolls into the history is kept as
   its text, a byte a cell and runs of attributes, instead of full cells;
   `Screen::line_cells` unpacks one when asked.
+- **Insert mode and autowrap kept**, which vt100 ignored: in insert mode
+  (`CSI 4 h`, `Screen::insert_mode`) text pushes the rest of its row right;
+  without autowrap (`CSI ? 7 l`, `Screen::autowrap`) text stops at the last
+  column, overwriting it, and a wide character that does not fit is left out, as
+  tmux's screen_write_cell.

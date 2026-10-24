@@ -10,7 +10,7 @@ use crate::capture::RowContents;
 use crate::grid::{Pos, Size};
 use crate::screen::{
     MODE_ALTERNATE_SCREEN, MODE_APPLICATION_CURSOR, MODE_APPLICATION_KEYPAD, MODE_BRACKETED_PASTE,
-    MODE_HIDE_CURSOR, MouseProtocolEncoding, MouseProtocolMode,
+    MODE_HIDE_CURSOR, MODE_INSERT, MODE_NO_WRAP, MouseProtocolEncoding, MouseProtocolMode,
 };
 use crate::{Callbacks, Color, UnderlineStyle};
 
@@ -162,9 +162,26 @@ impl<CB: Callbacks> Terminal<CB> {
         let mut base;
         let was_wide;
         if width > 0 {
-            let wrap = self.should_wrap(width);
-            let on_row = Self::on_row(self.alternate(), &mut self.callbacks);
-            self.screen.grid_mut().col_wrap(width, wrap, on_row);
+            let cols = self.screen.grid().size().cols();
+            let autowrap = self.screen.autowrap();
+            // Without autowrap a wide character that does not fit is left
+            // out, as tmux's screen_write_cell.
+            if !autowrap && width > 1 && (pos.col != cols && pos.col + width > cols) {
+                return;
+            }
+            if self.screen.mode(MODE_INSERT) {
+                let col = pos.col;
+                if let Some(row) = self.screen.grid_mut().drawing_row_mut(pos.row) {
+                    row.insert(col, width);
+                }
+            }
+            if autowrap {
+                let wrap = self.should_wrap(width);
+                let on_row = Self::on_row(self.alternate(), &mut self.callbacks);
+                self.screen.grid_mut().col_wrap(width, wrap, on_row);
+            } else if pos.col + width > cols {
+                return;
+            }
             base = self.screen.grid().pos();
             was_wide = self.cell(base).is_wide();
             let link = self.screen.link;
@@ -173,7 +190,13 @@ impl<CB: Callbacks> Terminal<CB> {
                 cell.set_link(link);
             }
             self.screen.last_char = Some(c);
-            self.screen.grid_mut().col_inc(width);
+            if autowrap {
+                self.screen.grid_mut().col_inc(width);
+            } else {
+                // The cursor sticks at the last column (`col_set` keeps it
+                // on the row), as tmux's.
+                self.screen.grid_mut().col_set(base.col + width);
+            }
         } else {
             // A character combining with the one before the cursor (the
             // last one, where a widened character left the cursor past it).
@@ -339,6 +362,8 @@ impl<CB: Callbacks> Terminal<CB> {
         for param in params {
             let screen = &mut self.screen;
             match (param, set) {
+                ([7], true) => screen.clear_mode(MODE_NO_WRAP),
+                ([7], false) => screen.set_mode(MODE_NO_WRAP),
                 ([1], true) => screen.set_mode(MODE_APPLICATION_CURSOR),
                 ([1], false) => screen.clear_mode(MODE_APPLICATION_CURSOR),
                 ([6], on) => screen.grid_mut().set_origin_mode(on),
@@ -585,6 +610,21 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
                 let rows = first(params, 1).unwrap_or_else(|| rows.get());
                 let cols = first(params, 2).unwrap_or_else(|| cols.get());
                 self.callbacks.resize(&mut self.screen, (rows, cols));
+            }
+            // SM / RM: insert mode the only one kept; the callbacks are told
+            // of each other parameter.
+            (None, 'h' | 'l') => {
+                for param in params {
+                    if param == [4] {
+                        if c == 'h' {
+                            self.screen.set_mode(MODE_INSERT);
+                        } else {
+                            self.screen.clear_mode(MODE_INSERT);
+                        }
+                    } else {
+                        unhandled(self);
+                    }
+                }
             }
             (Some(b'?'), 'h') => self.dec_mode(params, true, &mut unhandled),
             (Some(b'?'), 'l') => self.dec_mode(params, false, &mut unhandled),

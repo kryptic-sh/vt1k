@@ -4,9 +4,9 @@ What is not done yet, and why.
 
 - **Take over what tmxr does before vt100.** tmxr splits sequences out of a
   pane's output before vt100 sees them (`tmxr_term::modes::ModeSplitter`, the
-  DCS split in `dcs.rs`): modes 7, 12 and 1004, insert mode, tab stops (HTS,
-  TBC, CBT), DECSCUSR, SCP / RCP, OSC 4 / 10 / 11 / 12 queries and more. vt1k
-  could keep these itself; each moved in is one less pass over the output.
+  DCS split in `dcs.rs`): modes 12 and 1004, tab stops (HTS, TBC, CBT),
+  DECSCUSR, SCP / RCP, OSC 4 / 10 / 11 / 12 queries and more. vt1k could keep
+  these itself; each moved in is one less pass over the output.
 - **Attributes vt100 never kept**: blink, hidden, strikethrough and overline.
   The mode byte is full; keeping them grows `Attrs`.
 - **A screen's own rows are full cells** (36 bytes a `Cell`, asserted): fine for

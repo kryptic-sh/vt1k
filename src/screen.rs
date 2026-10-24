@@ -79,6 +79,11 @@ pub const MODE_APPLICATION_CURSOR: u8 = 0b0000_0010;
 pub const MODE_HIDE_CURSOR: u8 = 0b0000_0100;
 pub const MODE_ALTERNATE_SCREEN: u8 = 0b0000_1000;
 pub const MODE_BRACKETED_PASTE: u8 = 0b0001_0000;
+/// Insert mode (IRM, `CSI 4 h`): text pushes the rest of the row right.
+pub const MODE_INSERT: u8 = 0b0010_0000;
+/// Autowrap turned off (DECAWM, `CSI ? 7 l`): text stops at the last
+/// column instead of going on to the next row.
+pub const MODE_NO_WRAP: u8 = 0b0100_0000;
 
 /// The terminal's state: the normal screen with its history, the
 /// alternate screen, the pen, modes and hyperlinks.
@@ -392,6 +397,18 @@ impl Screen {
     #[must_use]
     pub const fn hide_cursor(&self) -> bool {
         self.mode(MODE_HIDE_CURSOR)
+    }
+
+    /// Insert mode (IRM, `CSI 4 h`) is on.
+    #[must_use]
+    pub const fn insert_mode(&self) -> bool {
+        self.mode(MODE_INSERT)
+    }
+
+    /// Autowrap (DECAWM, `CSI ? 7 h`) is on, as it is to begin with.
+    #[must_use]
+    pub const fn autowrap(&self) -> bool {
+        !self.mode(MODE_NO_WRAP)
     }
 
     #[must_use]
