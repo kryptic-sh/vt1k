@@ -26,7 +26,7 @@ pub struct Cell {
 }
 
 // The screen's own rows hold full cells; the history packs them.
-const _: () = assert!(core::mem::size_of::<Cell>() == 36);
+const _: () = assert!(core::mem::size_of::<Cell>() == 38);
 
 impl PartialEq for Cell {
     fn eq(&self, other: &Self) -> bool {
@@ -128,6 +128,30 @@ impl Cell {
     #[must_use]
     pub const fn inverse(&self) -> bool {
         self.attrs.inverse()
+    }
+
+    /// It blinks (SGR 5 or 6).
+    #[must_use]
+    pub const fn blink(&self) -> bool {
+        self.attrs.blink()
+    }
+
+    /// It is hidden (SGR 8).
+    #[must_use]
+    pub const fn hidden(&self) -> bool {
+        self.attrs.hidden()
+    }
+
+    /// It is struck through (SGR 9).
+    #[must_use]
+    pub const fn strikethrough(&self) -> bool {
+        self.attrs.strikethrough()
+    }
+
+    /// It has a line over it (SGR 53).
+    #[must_use]
+    pub const fn overline(&self) -> bool {
+        self.attrs.overline()
     }
 
     /// The OSC 8 hyperlink it was written under, if any, as an id for

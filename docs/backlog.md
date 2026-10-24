@@ -7,11 +7,9 @@ What is not done yet, and why.
   DCS split in `dcs.rs`): modes 12 and 1004, tab stops (HTS, TBC, CBT),
   DECSCUSR, SCP / RCP, OSC 4 / 10 / 11 / 12 queries and more. vt1k could keep
   these itself; each moved in is one less pass over the output.
-- **Attributes vt100 never kept**: blink, hidden, strikethrough and overline.
-  The mode byte is full; keeping them grows `Attrs`.
-- **A screen's own rows are full cells** (36 bytes a `Cell`, asserted): fine for
-  a screen's worth, and what lets `Screen::cell` hand out a reference. Only the
-  history is packed.
+- **A screen's own rows are full cells** (`Cell`'s size is asserted in
+  `cell.rs`): fine for a screen's worth, and what lets `Screen::cell` hand out a
+  reference. Only the history is packed.
 - **Kept from vt100 where it panics instead**: a character widened by what
   combines with it (U+FE0F) at the end of a one-column row, then a combining
   character, or `CSI @` with the cursor past the row's end, panic in vt100; vt1k

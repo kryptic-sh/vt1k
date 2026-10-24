@@ -64,6 +64,35 @@ const CSI_FINALS: &[char] = &[
 const DEC_MODES: &[u16] = &[
     1, 6, 9, 12, 25, 47, 1000, 1002, 1003, 1004, 1005, 1006, 1047, 1049, 2004, 2026,
 ];
+/// The SGR codes vt1k keeps and vt100 hands to the callbacks: blink,
+/// hidden, strikethrough and overline, set and reset.
+const VT1K_ONLY_SGR: &[u16] = &[5, 6, 8, 9, 25, 28, 29, 53, 55];
+
+/// An SGR that reaches a code of [`VT1K_ONLY_SGR`], read as both read it:
+/// a colour's arguments skipped, and a colour that cannot be read ending
+/// it. From there on vt1k's cells may carry attributes vt100's do not,
+/// which shows in what a row counts as written, so the session ends.
+fn keeps_more(i1: Option<u8>, params: &[&[u16]], c: char) -> bool {
+    if c != 'm' || i1.is_some() {
+        return false;
+    }
+    let byte = |p: Option<&[u16]>| matches!(p, Some([n]) if *n <= 255);
+    let mut iter = params.iter().copied();
+    while let Some(param) = iter.next() {
+        match param {
+            [38 | 48 | 58] => match iter.next() {
+                // All three are read, as the parsers read them.
+                Some([2]) if byte(iter.next()) & byte(iter.next()) & byte(iter.next()) => {}
+                Some([5]) if byte(iter.next()) => {}
+                _ => return false,
+            },
+            [n] if VT1K_ONLY_SGR.contains(n) => return true,
+            _ => {}
+        }
+    }
+    false
+}
+
 const SGR: &[&str] = &[
     "0",
     "1",
@@ -101,8 +130,9 @@ const SGR: &[&str] = &[
     "38;2;1",
     "38;7",
     "48;5;300",
-    "5",
-    "53",
+    // Codes neither keeps, handed to the callbacks.
+    "26",
+    "60",
     "",
 ];
 const OSC: &[&str] = &[
@@ -227,8 +257,9 @@ macro_rules! callbacks {
 
 callbacks!(vt1k);
 
-/// vt100's callbacks, recorded alike.
-struct OldLog(Log);
+/// vt100's callbacks, recorded alike, and whether it was handed an SGR
+/// code vt1k keeps.
+struct OldLog(Log, bool);
 
 impl vt100::Callbacks for OldLog {
     fn audible_bell(&mut self, _: &mut vt100::Screen) {
@@ -269,6 +300,7 @@ impl vt100::Callbacks for OldLog {
         p: &[&[u16]],
         c: char,
     ) {
+        self.1 |= keeps_more(i1, p, c);
         self.0.0.push(format!("csi {i1:?} {i2:?} {p:?} {c}"));
     }
     fn unhandled_osc(&mut self, _: &mut vt100::Screen, p: &[&[u8]]) {
@@ -379,7 +411,8 @@ fn run(seed: u64) {
     let history = *rng.pick(&[0, 3, 50]);
     let reflow = rng.chance(50);
     let mut new = vt1k::Parser::new_with_callbacks(rows, cols, history, Log::default());
-    let mut old = vt100::Parser::new_with_callbacks(rows, cols, history, OldLog(Log::default()));
+    let mut old =
+        vt100::Parser::new_with_callbacks(rows, cols, history, OldLog(Log::default(), false));
     new.screen_mut().set_reflow(reflow);
     old.screen_mut().set_reflow(reflow);
     let mut steps = String::new();
@@ -439,7 +472,7 @@ fn run(seed: u64) {
                     fed.is_ok(),
                     "seed {seed} step {step}: vt1k panicked\nsteps:\n{steps}"
                 );
-                if old_fed.is_err() {
+                if old_fed.is_err() || old.callbacks().1 {
                     return;
                 }
             }

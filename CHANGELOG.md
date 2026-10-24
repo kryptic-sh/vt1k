@@ -17,6 +17,10 @@ All notable changes to this project are documented here. The format follows
 - **History rows packed small**: a row that scrolls into the history is kept as
   its text, a byte a cell and runs of attributes, instead of full cells;
   `Screen::line_cells` unpacks one when asked.
+- **Blink, hidden, strikethrough and overline kept**, which vt100 ignored: SGR 5
+  or 6, 8, 9 and 53 set them and 25, 28, 29 and 55 reset them, as tmux's
+  input_csi_dispatch_sgr (`Cell::blink`, `hidden`, `strikethrough`, `overline`).
+  A cell takes two bytes more for them.
 - **Insert mode and autowrap kept**, which vt100 ignored: in insert mode
   (`CSI 4 h`, `Screen::insert_mode`) text pushes the rest of its row right;
   without autowrap (`CSI ? 7 l`, `Screen::autowrap`) text stops at the last

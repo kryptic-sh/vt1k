@@ -424,12 +424,20 @@ impl<CB: Callbacks> Terminal<CB> {
                         attrs.set_underline_style(style);
                     }
                 }
+                [5 | 6] => attrs.set_blink(true),
                 [7] => attrs.set_inverse(true),
+                [8] => attrs.set_hidden(true),
+                [9] => attrs.set_strikethrough(true),
                 [21] => attrs.set_underline_style(UnderlineStyle::Double),
                 [22] => attrs.set_normal_intensity(),
                 [23] => attrs.set_italic(false),
                 [24] => attrs.set_underline_style(UnderlineStyle::None),
+                [25] => attrs.set_blink(false),
                 [27] => attrs.set_inverse(false),
+                [28] => attrs.set_hidden(false),
+                [29] => attrs.set_strikethrough(false),
+                [53] => attrs.set_overline(true),
+                [55] => attrs.set_overline(false),
                 [n @ 30..=37] => attrs.fg = Color::Idx((n - 30) as u8),
                 [39] => attrs.fg = Color::Default,
                 [n @ 40..=47] => attrs.bg = Color::Idx((n - 40) as u8),

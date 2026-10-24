@@ -15,8 +15,8 @@ use crate::row::Row;
 use crate::{Cell, Color};
 
 /// A run's first cell (2 bytes), link (2) and attributes: three colours of
-/// [`COLOUR_BYTES`] and the mode byte.
-const RUN_BYTES: usize = 2 + 2 + 3 * COLOUR_BYTES + 1;
+/// [`COLOUR_BYTES`] and the mode (2, little-endian).
+const RUN_BYTES: usize = 2 + 2 + 3 * COLOUR_BYTES + 2;
 const COLOUR_BYTES: usize = 4;
 const HEADER_BYTES: usize = 1 + 2 + 2;
 const WRAPPED: u8 = 0b1;
@@ -61,7 +61,7 @@ impl PackedRow {
             for colour in [attrs.fg, attrs.bg, attrs.ul] {
                 out.extend_from_slice(&colour_bytes(colour));
             }
-            out.push(attrs.mode);
+            out.extend_from_slice(&attrs.mode.to_le_bytes());
         }
         for cell in cells {
             out.extend_from_slice(cell.contents_bytes());
@@ -83,7 +83,7 @@ impl PackedRow {
                 fg: colour(4),
                 bg: colour(4 + COLOUR_BYTES),
                 ul: colour(4 + 2 * COLOUR_BYTES),
-                mode: r[4 + 3 * COLOUR_BYTES],
+                mode: u16::from_le_bytes([r[4 + 3 * COLOUR_BYTES], r[5 + 3 * COLOUR_BYTES]]),
             };
             (
                 usize::from(u16::from_le_bytes([r[0], r[1]])),
