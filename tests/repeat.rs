@@ -38,6 +38,8 @@ fn rep_after_anything_else_does_nothing() {
     assert_eq!(row(&p, 0), "aaa");
     p.process(b"\rb\x1b[m\x1b[2b");
     assert_eq!(row(&p, 0), "baa");
+    p.process(b"\rf\x1b[1:2b");
+    assert_eq!(row(&p, 0), "faa", "a count with a colon is ignored");
     p.process(b"\rc\x07\x1b[2b");
     assert_eq!(row(&p, 0), "caa");
     p.process(b"\rd\x1b]0;t\x07\x1b[2b");

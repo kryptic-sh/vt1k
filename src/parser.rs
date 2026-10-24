@@ -631,10 +631,14 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
                 let attrs = self.screen.attrs;
                 self.screen.grid_mut().erase_cells(one(1), attrs);
             }
+            // A count that is not a plain number is ignored, as tmux's
+            // input_get.
             (None, 'b') => {
-                self.screen.last_char = last;
-                self.rep(one(1));
-                self.screen.last_char = None;
+                if params.iter().all(|p| p.len() == 1) {
+                    self.screen.last_char = last;
+                    self.rep(one(1));
+                    self.screen.last_char = None;
+                }
             }
             // SCP and RCP, as tmux's: the cursor and attributes saved and
             // restored as `ESC 7` and `ESC 8` do.
