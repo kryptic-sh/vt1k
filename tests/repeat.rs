@@ -3,11 +3,18 @@
 use core::num::NonZeroU16;
 
 fn parser(cols: u16) -> vt1k::Parser {
-    vt1k::Parser::new(NonZeroU16::new(3).unwrap(), NonZeroU16::new(cols).unwrap(), 0)
+    vt1k::Parser::new(
+        NonZeroU16::new(3).unwrap(),
+        NonZeroU16::new(cols).unwrap(),
+        0,
+    )
 }
 
 fn row(p: &vt1k::Parser, row: usize) -> String {
-    p.screen().rows(0, p.screen().size().1.get()).nth(row).unwrap()
+    p.screen()
+        .rows(0, p.screen().size().1.get())
+        .nth(row)
+        .unwrap()
 }
 
 /// REP repeats the character printed just before, no more than the columns
