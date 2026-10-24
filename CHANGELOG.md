@@ -21,6 +21,9 @@ All notable changes to this project are documented here. The format follows
   or 6, 8, 9 and 53 set them and 25, 28, 29 and 55 reset them, as tmux's
   input_csi_dispatch_sgr (`Cell::blink`, `hidden`, `strikethrough`, `overline`).
   A cell takes two bytes more for them.
+- **REP, SCP and RCP made as tmux makes them**: REP (`CSI b`) repeats only a
+  character with nothing after it, and no further than the row's end; SCP and
+  RCP (`CSI s`, `CSI u`) save and restore the cursor as `ESC 7` and `ESC 8`.
 - **Tab stops kept as tmux keeps them**, where vt100's were fixed every 8
   columns: HTS (`ESC H`) sets one, TBC (`CSI g`, 0 or 3) clears one or all, CBT
   (`CSI Z`) goes back, and HT past the last column leaves the cursor there, as

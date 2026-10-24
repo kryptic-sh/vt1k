@@ -322,9 +322,18 @@ impl<CB: Callbacks> Terminal<CB> {
         self.screen = Screen::new(size, history);
     }
 
+    /// REP as tmux's: the character printed just before, `count` more
+    /// times, no more than the columns left of the cursor's row.
     fn rep(&mut self, count: u16) {
         if let Some(c) = self.screen.last_char {
-            for _ in 0..count {
+            let left = self
+                .screen
+                .grid()
+                .size()
+                .cols
+                .get()
+                .saturating_sub(self.screen.grid().pos().col);
+            for _ in 0..count.min(left) {
                 self.text(c);
             }
         }
@@ -510,6 +519,9 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
     }
 
     fn execute(&mut self, b: u8) {
+        // REP repeats only a character with nothing after it, as tmux's
+        // INPUT_LAST, which every control, escape, CSI and string clears.
+        self.screen.last_char = None;
         match b {
             7 => self.callbacks.audible_bell(&mut self.screen),
             8 => self.screen.grid_mut().col_dec(1),
@@ -524,6 +536,7 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
     }
 
     fn esc_dispatch(&mut self, intermediates: &[u8], _ignore: bool, b: u8) {
+        self.screen.last_char = None;
         if let Some(&i) = intermediates.first() {
             self.callbacks.unhandled_escape(
                 &mut self.screen,
@@ -549,6 +562,8 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
     }
 
     fn csi_dispatch(&mut self, params: &vte::Params, intermediates: &[u8], _ignore: bool, c: char) {
+        // Every CSI forgets the last character; REP uses it first.
+        let last = self.screen.last_char.take();
         let all: Vec<&[u16]> = params.iter().collect();
         let i1 = intermediates.first().copied();
         let i2 = intermediates.get(1).copied();
@@ -616,7 +631,15 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
                 let attrs = self.screen.attrs;
                 self.screen.grid_mut().erase_cells(one(1), attrs);
             }
-            (None, 'b') => self.rep(one(1)),
+            (None, 'b') => {
+                self.screen.last_char = last;
+                self.rep(one(1));
+                self.screen.last_char = None;
+            }
+            // SCP and RCP, as tmux's: the cursor and attributes saved and
+            // restored as `ESC 7` and `ESC 8` do.
+            (None, 's') => self.screen.save_cursor(),
+            (None, 'u') => self.screen.restore_cursor(),
             (None, 'd') => self.screen.grid_mut().row_set(one(1) - 1),
             (None, 'm') => self.sgr(params, &mut unhandled),
             (None, 'r') => {
@@ -671,7 +694,12 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
         }
     }
 
+    fn hook(&mut self, _params: &vte::Params, _intermediates: &[u8], _ignore: bool, _action: char) {
+        self.screen.last_char = None;
+    }
+
     fn osc_dispatch(&mut self, params: &[&[u8]], _bell_terminated: bool) {
+        self.screen.last_char = None;
         match params {
             [b"0", s] => {
                 self.callbacks.set_window_icon_name(&mut self.screen, s);

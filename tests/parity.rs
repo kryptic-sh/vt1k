@@ -58,10 +58,11 @@ const CONTROLS: &[&str] = &[
     "\r", "\n", "\r\n", "\x08", "\r\t", "\x07", "\x0b", "\x0c", "\x01", "\x0e", "\x0f", "\x1b7",
     "\x1b8", "\x1b=", "\x1b>", "\x1bM", "\x1bg", "\x1b(B", "\x1bc", "\x1bZ", "\x18",
 ];
-/// Not `g` (TBC), whose tab stops vt1k keeps and vt100 does not.
+/// Not `g` (TBC), whose tab stops vt1k keeps and vt100 does not, nor `b`
+/// (REP), `s` and `u` (SCP and RCP), which vt1k makes as tmux does.
 const CSI_FINALS: &[char] = &[
-    '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'S', 'T', 'X', 'b', 'd',
-    'f', 'r', 't', '`', 'n', 'c', 'q', 'u', 's',
+    '@', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'P', 'S', 'T', 'X', 'd', 'f',
+    'r', 't', '`', 'n', 'c', 'q',
 ];
 /// The DEC private modes compared: not 7 (autowrap), which vt100 ignores.
 const DEC_MODES: &[u16] = &[
