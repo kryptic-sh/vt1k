@@ -166,3 +166,15 @@ fn a_full_reset_keeps_reflow() {
         .set_size(NonZeroU16::new(3).unwrap(), NonZeroU16::new(8).unwrap());
     assert_eq!(rows(&p)[0], "abcdefgh");
 }
+
+/// 1049 keeps its cursor and pen apart from what `ESC 7` saved, as tmux's
+/// `saved_cx` / `saved_cell`.
+#[test]
+fn the_cursor_1049_saves_is_apart_from_esc_7s() {
+    let mut p = parser(4, 10);
+    p.process(b"\x1b[1;2H\x1b7\x1b[3;4H\x1b[1m\x1b[?1049h\x1b[m\x1b[4;1H\x1b[?1049l");
+    assert_eq!(p.screen().cursor_position(), (2, 3));
+    p.process(b"x\x1b8");
+    assert!(p.screen().cell(2, 3).unwrap().bold(), "1049's pen back");
+    assert_eq!(p.screen().cursor_position(), (0, 1), "ESC 7's cursor kept");
+}

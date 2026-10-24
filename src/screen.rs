@@ -139,6 +139,9 @@ pub struct Screen {
     tabs: Vec<bool>,
     /// [`Screen::alternate_saved`].
     pub(crate) alternate_saved: Option<(u16, u16)>,
+    /// The pen when the alternate screen last came on, which 1049 puts
+    /// back, as tmux's `saved_cell` (apart from what `ESC 7` saves).
+    alternate_saved_attrs: Attrs,
     /// [`Screen::set_alternate_allowed`].
     alternate_allowed: bool,
 }
@@ -170,6 +173,7 @@ impl Screen {
             last_char: None,
             tabs: default_tabs(size.cols.get()),
             alternate_saved: None,
+            alternate_saved_attrs: Attrs::new(),
             alternate_allowed: true,
         }
     }
@@ -634,8 +638,9 @@ impl Screen {
     /// To the alternate screen (47, 1047 or 1049 set) as tmux's
     /// screen_alternate_on: cleared, the cursor where it was, the scroll
     /// region and origin mode the same (tmux keeps one for the terminal);
-    /// 1049 saves the cursor for its way back. Nothing when already there
-    /// or when switches are not allowed.
+    /// the pen is saved, and with 1049 the cursor, for 1049's way back
+    /// (apart from `ESC 7`'s). Nothing when already there or when switches
+    /// are not allowed.
     pub(crate) fn alternate_on(&mut self, mode: u16) {
         if !self.alternate_allowed || self.mode(MODE_ALTERNATE_SCREEN) {
             return;
@@ -643,8 +648,8 @@ impl Screen {
         let pos = self.grid.pos();
         if mode == 1049 {
             self.alternate_saved = Some((pos.row, pos.col));
-            self.save_cursor();
         }
+        self.alternate_saved_attrs = self.attrs;
         self.grid.set_history_offset(0);
         self.alternate_grid.clear();
         self.alternate_grid.allocate_rows();
@@ -654,9 +659,9 @@ impl Screen {
     }
 
     /// From the alternate screen (47, 1047 or 1049 reset) as tmux's
-    /// screen_alternate_off: 1049 puts back the cursor it saved (even
-    /// when not on the alternate screen), 47 and 1047 keep it where it is;
-    /// the scroll region and origin mode come along.
+    /// screen_alternate_off: 1049 puts back the cursor and pen it saved
+    /// (even when not on the alternate screen), 47 and 1047 keep the cursor
+    /// where it is; the scroll region and origin mode come along.
     pub(crate) fn alternate_off(&mut self, mode: u16) {
         if !self.alternate_allowed {
             return;
@@ -676,10 +681,13 @@ impl Screen {
             }
             self.grid.take_region_from(&self.alternate_grid);
         }
-        if mode == 1049 {
-            self.restore_cursor();
-        } else {
-            self.grid.put_pos(pos);
+        match self.alternate_saved {
+            Some((row, col)) if mode == 1049 => {
+                self.grid.put_pos(Pos { row, col });
+                self.attrs = self.alternate_saved_attrs;
+            }
+            _ if was => self.grid.put_pos(pos),
+            _ => {}
         }
     }
 
