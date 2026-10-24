@@ -19,22 +19,24 @@ assert!(screen.cell(0, 0).unwrap().bold());
 Escape sequences are read with [vte](https://crates.io/crates/vte). The screen
 keeps:
 
-- text with its colours, bold, dim, italic, inverse, underline style (single,
-  double, curly, dotted, dashed) and colour, and OSC 8 hyperlink;
+- text with its colours, bold, dim, italic, inverse, blink, hidden,
+  strikethrough, overline, underline style (single, double, curly, dotted,
+  dashed) and colour, and OSC 8 hyperlink;
 - the normal screen with its history and the alternate screen, the normal screen
   readable under the alternate one;
 - rows of history packed small, unpacked only where a whole row is read;
-- the cursor, scroll region, origin mode, keypad and cursor-key modes, bracketed
-  paste, mouse reporting and cursor style;
+- the cursor, scroll region, origin mode, insert mode, autowrap, keypad and
+  cursor-key modes, bracketed paste, mouse reporting and cursor style;
 - optionally, the normal screen rewrapped on a width change, as tmux's
   `grid_reflow` ([`Screen::set_reflow`]), with each line's new place reported.
 
 What it does not keep (titles, the bell, the clipboard, sequences it does not
 handle) goes to a [`Callbacks`] implementation.
 
-Its behaviour follows [vt100](https://crates.io/crates/vt100) as tmxr used it:
-`tests/parity.rs` feeds random sessions to both and compares everything either
-shows.
+Its behaviour follows [vt100](https://crates.io/crates/vt100) as tmxr used it,
+except where it keeps what vt100 ignored (insert mode, autowrap, and blink,
+hidden, strikethrough and overline), there as tmux does: `tests/parity.rs` feeds
+random sessions to both and compares everything either shows.
 
 ## License
 
