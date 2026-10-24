@@ -2,11 +2,19 @@
 
 What is not done yet, and why.
 
-- **Take over what tmxr does before vt100.** tmxr splits sequences out of a
-  pane's output before vt100 sees them (`tmxr_term::modes::ModeSplitter`, the
-  DCS split in `dcs.rs`): modes 12 and 1004, DECSCUSR, OSC 4 / 10 / 11 / 12
-  queries and more. vt1k could keep these itself; each moved in is one less pass
-  over the output.
+- **Take over the rest of what tmxr does before vt1k.** Tab stops, REP, SCP and
+  RCP, insert mode and autowrap moved in (2026-10-24). Still in tmxr
+  (`tmxr_term::modes::ModeSplitter`, the DCS split in `dcs.rs`, and its
+  callbacks): the alternate screen's switches as tmux makes them (47, 1047,
+  1049), the mouse modes kept apart as tmux keeps them, origin mode, the scroll
+  region kept for the terminal rather than per screen, IL / DL outside it,
+  DECSCUSR's shape kept over a full reset, cursor blinking (12) and focus
+  reports (1004), and OSC 4 / 10 / 11 / 12 queries. Each is tmux's behaviour
+  where vt100's differs, so moving one in takes it out of the parity test (as
+  for the ones moved so far); and tmxr's pass over the output stays until the
+  last one moves, so none of them alone saves anything (the splitter was about
+  2% of the server's time under `seq 1 2000000`). Worth doing as one piece of
+  work, not one sequence at a time.
 - **A screen's own rows are full cells** (`Cell`'s size is asserted in
   `cell.rs`): fine for a screen's worth, and what lets `Screen::cell` hand out a
   reference. Only the history is packed.
