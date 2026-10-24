@@ -573,7 +573,13 @@ impl<CB: Callbacks> vte::Perform for Terminal<CB> {
                 grid.row_dec_clamp(one(1));
             }
             (None, 'G' | '`') => self.screen.grid_mut().col_set(one(1) - 1),
-            (None, 'Z') => self.screen.back_tab(one(1)),
+            // A count that is not a plain number is ignored, as tmux's
+            // input_get.
+            (None, 'Z') => {
+                if params.iter().all(|p| p.len() == 1) {
+                    self.screen.back_tab(one(1));
+                }
+            }
             // TBC: tmux clears the stop at the cursor (0) or all (3).
             (None, 'g') => match first(params, 0).unwrap_or(0) {
                 0 => self.screen.set_tab(false),

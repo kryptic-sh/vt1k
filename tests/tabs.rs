@@ -46,6 +46,8 @@ fn cbt_goes_back_stops() {
     let mut p = parser(30);
     p.process(b"\x1b[26G\x1b[2Z");
     assert_eq!(col(&p), 16);
+    p.process(b"\x1b[3G\x1b[1:2Z");
+    assert_eq!(col(&p), 2, "a count with a colon is ignored");
     p.process(b"\x1b[5Z");
     assert_eq!(col(&p), 0);
 }
