@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-26
+
 ### Added
 
 - **The screen**: `Parser` reads a program's output (with vte) into a `Screen`
@@ -47,3 +49,6 @@ All notable changes to this project are documented here. The format follows
   without autowrap (`CSI ? 7 l`, `Screen::autowrap`) text stops at the last
   column, overwriting it, and a wide character that does not fit is left out, as
   tmux's screen_write_cell.
+
+[Unreleased]: https://github.com/kryptic-sh/vt1k/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/kryptic-sh/vt1k/releases/tag/v0.1.0
